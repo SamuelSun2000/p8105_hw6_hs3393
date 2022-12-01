@@ -73,7 +73,7 @@ conf_result <- boot_result %>%
 Therefore, we can see that the 95% confidence interval for $\hat{r^2}$ is (`r pull(conf_result, rsquare_ci_lower)`, `r pull(conf_result, rsquare_ci_upper)` ), the 95% confidence interval for $log(\hat{\beta_0}*\hat{\beta_1})$ is (`r pull(conf_result, log_b0b1_ci_lower)`, `r pull(conf_result, log_b0b1_ci_upper)`).
 
 ## problem 2
-```{r}
+```{r message=FALSE}
 data <- read_csv("data/homicide-data.csv") %>% 
   janitor::clean_names() %>%
   unite("city_state", c(city, state), sep = ", ", remove = F) %>%
@@ -89,18 +89,19 @@ balt_model <- baltimore <- data %>%
   filter(city_state == "Baltimore, MD") %>% 
   glm(solve ~ victim_age + victim_sex + victim_race, data = .,family = binomial())
 
-balt_result <- log_model %>%
+balt_result <- balt_model %>%
   broom::tidy() %>% 
   mutate(OR = exp(estimate)) %>% 
-  mutate(lower = exp(confint(log_model)[,1]),
-         upper = exp(confint(log_model)[,2])
+  mutate(lower = exp(confint(balt_model)[,1]),
+         upper = exp(confint(balt_model)[,2])
   ) %>% 
-  select(term, OR, lower, upper)
+  select(term, OR, lower, upper) %>%
+  filter(term == "victim_sexMale") %>% mutate(across(where(is.numeric), round, 4))
 ```
 
-The estimated odds ratio for solving homicides comparing male victims to victims is `r balt_result["victim_sexMale","OR"]`, the 95% confidence interval for it is (`r balt_result["victim_sexMale","lower"]`, `r balt_result["victim_sexMale","upper"]`). 
+The estimated odds ratio for solving homicides comparing male victims to victims is `r balt_result[,"OR"]`, the 95% confidence interval for it is (`r balt_result[,"lower"]`, `r balt_result[,"upper"]`). 
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, message=FALSE}
 # Glm for all cities
 
 all_model <- data %>% 
@@ -131,7 +132,7 @@ all_result %>%
   theme(legend.position="none")+
   labs(x = "Adjusted odds ratio", 
        y = "City, State",
-       title = "Homicides solving odds ratio male vs female" )
+       title = "Homicides solving odds ratio male & female" )
 ```
 
 Homicides in which the victim is male are significantly less like to be resolved than those in which the victim is female in many cities, eg. New York, Chicago and Baltimore. In no city homicides in which victim is female are significantly less likely to be resolved as no lower bound of the odds ratio is less than 1.
@@ -139,7 +140,7 @@ Homicides in which the victim is male are significantly less like to be resolved
 ## Problem 3
 ```{r}
 data <- read_csv("data/birthweight.csv") %>% 
-  mutate_at(c("frace", "malform", "mrace"), as.factor)
+  mutate_at(c("babysex", "frace", "malform", "mrace"), as.factor)
 
 which(is.na(data) == T)
 ```
@@ -148,7 +149,7 @@ The dataset have no NA.
 
 ### Model building
 
-We will start model building by stepwise variable selection by AIC.
+We will start model building by stepwise variable selection by adjusted R squared.
 
 ```{r determine variable number}
 mat <- as.matrix(data)
@@ -163,14 +164,14 @@ diff(model_summary$adjr2)
 
 coef(models, id = 4)
 ```
-Use adjusted R squared as the criteria, we can see that after the variable number greater than 4, the contribution of adding a new variavle will help adjusted R squared increase less than 0.001, which is of trivial effect for the full model, so we use 7 as the cutoff point. 
+
+My modeling procedures are: first use `regsubsets` function in `leap` package, plot adjusted R squared against variable numbers. Then, find the optimal variable numbers, use `coef` function to select the best 4 variables to fit in the linear model. 
+
+Use adjusted R squared as the criteria, we can see that after the variable number greater than 4, the contribution of adding a new variable will help adjusted R squared increase less than 0.005 (subjectively selected), which means adding them will have trivial contribution to the model, so we use 4 as the cutoff point. During that process as mrace2 is indicated as a important variable, it would be no harm to put mrace all in the model.
 
 ```{r selected variable model}
 select_model <- lm(bwt ~ bhead + blength + delwt + mrace, data = data)
-```
 
-
-```{r}
 data %>%
   add_predictions(select_model) %>% 
   add_residuals(select_model) %>% 
@@ -215,3 +216,5 @@ cv_df %>%
          )
 
 ```
+
+The selected model (including 4 variables) have a generally lower RMSE, having better performance in predicting, while the model have 2 main effects (length at birth and gestational age) have higher RMSE and preform worst in prediction among the three models.
