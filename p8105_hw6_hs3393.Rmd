@@ -101,7 +101,7 @@ balt_result <- balt_model %>%
 
 The estimated odds ratio for solving homicides comparing male victims to victims is `r balt_result[,"OR"]`, the 95% confidence interval for it is (`r balt_result[,"lower"]`, `r balt_result[,"upper"]`). 
 
-```{r, warning=FALSE, message=FALSE}
+```{r, warning=FALSE, message=FALSE, fig.height = 6}
 # Glm for all cities
 
 all_model <- data %>% 
