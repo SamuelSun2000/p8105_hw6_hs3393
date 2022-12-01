@@ -9,7 +9,7 @@ output: github_document
 library(tidyverse)
 library(ggplot2)
 library(modelr)
-
+library(leaps)
 
 knitr::opts_chunk$set(
   fig.width = 5,
@@ -74,7 +74,7 @@ Therefore, we can see that the 95% confidence interval for $\hat{r^2}$ is (`r pu
 
 ## problem 2
 ```{r}
-data <- read_csv("homicide-data.csv") %>% 
+data <- read_csv("data/homicide-data.csv") %>% 
   janitor::clean_names() %>%
   unite("city_state", c(city, state), sep = ", ", remove = F) %>%
   filter(!city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")) %>% 
@@ -85,25 +85,93 @@ data <- read_csv("homicide-data.csv") %>%
     filter(victim_race %in% c("Black", "White")) %>% 
   mutate(victim_age =  as.numeric(victim_age))
 
-log_model <- baltimore <- data %>% 
+balt_model <- baltimore <- data %>% 
   filter(city_state == "Baltimore, MD") %>% 
   glm(solve ~ victim_age + victim_sex + victim_race, data = .,family = binomial())
 
-model_result <- log_model %>%
+balt_result <- log_model %>%
   broom::tidy() %>% 
   mutate(OR = exp(estimate)) %>% 
   mutate(lower = exp(confint(log_model)[,1]),
          upper = exp(confint(log_model)[,2])
-  )
+  ) %>% 
+  select(term, OR, lower, upper)
 ```
 
-The estimated odds ratio for solving homicides comparing male victims to victims is `r model_result["victim_sexMale","OR"]`, the 95% confidence interval for it is (`r model_result["victim_sexMale","lower"]`, `rmodel_result["victim_sexMale","upper"]`). 
+The estimated odds ratio for solving homicides comparing male victims to victims is `r balt_result["victim_sexMale","OR"]`, the 95% confidence interval for it is (`r balt_result["victim_sexMale","lower"]`, `r balt_result["victim_sexMale","upper"]`). 
 
-```{r}
+```{r, warning=FALSE}
 # Glm for all cities
 
-glm_model <- data %>% 
-  nest(data = -city_state)
-  
+all_model <- data %>% 
+  nest(data = -city_state) %>% 
+  mutate(model = map(data, ~glm(solve ~ victim_age + victim_sex + victim_race, data = .x,family = binomial()))
+         ) %>%
+  mutate(
+    results = map(model, broom::tidy)
+  )
+
+all_result <- all_model %>% 
+  select(city_state, model, results) %>% mutate(
+    lower = map(.x = model, ~exp(confint(object = .x)[,1])),
+    upper = map(.x = model, ~exp(confint(object = .x)[,2])) 
+    )%>% 
+  select(-model) %>% 
+  unnest(results, lower, upper) %>% 
+  mutate(OR = exp(estimate)) %>% 
+  select(city_state, term, OR, lower, upper) %>% 
+  filter(term == "victim_sexMale")
+
+all_result %>% 
+  mutate(city_state = fct_reorder(city_state, OR)) %>% 
+  ggplot(aes(x = city_state, y = OR, color = city_state)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) + 
+  coord_flip() +
+  theme(legend.position="none")+
+  labs(x = "Adjusted odds ratio", 
+       y = "City, State",
+       title = "Homicides solving odds ratio male vs female" )
 ```
 
+Homicides in which the victim is male are significantly less like to be resolved than those in which the victim is female in many cities, eg. New York, Chicago and Baltimore. In no city homicides in which victim is female are significantly less likely to be resolved as no lower bound of the odds ratio is less than 1.
+
+## Problem 3
+```{r}
+data <- read_csv("data/birthweight.csv") %>% 
+  mutate_at(c("frace", "malform", "mrace"), as.factor)
+
+which(is.na(data) == T)
+```
+
+The dataset have no NA.
+
+### Model building
+
+We will start model building by stepwise variable selection by AIC.
+
+```{r determine variable number}
+mat <- as.matrix(data)
+
+models <- regsubsets(bwt ~ ., data = data, nvmax = 19)
+
+model_summary <- summary(models)
+
+plot(model_summary$adjr2, xlab="No of parameters", ylab="Adj R2")
+
+diff(model_summary$adjr2)
+
+coef(models, id = 7)
+```
+Use adjusted R squared as the criteria, we can see that after the variable number greater than 7, the contribution of adding a new variavle will help adjuseted R squared increase less than 0.001, which is of trivial effect for the full model, so we use 7 as the cutoff point. 
+
+```{r selected variable model}
+select_model <- lm(bwt ~ bhead + blength + delwt + gaweeks + mrace + smoken + pnumsga, data = data)
+```
+
+
+```{r}
+main_2_model <- lm(bwt ~ blength + gaweeks, data = data)
+
+inter_3_model <- lm(bwt ~ bhead + blength + babysex + bhead:blength + bhead:babysex + blength:babysex + bhead:blength:babysex, data = data)
+```
