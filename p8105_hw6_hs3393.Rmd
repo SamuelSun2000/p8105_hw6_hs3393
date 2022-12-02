@@ -182,7 +182,11 @@ data %>%
     y = "Residuals",
     title = "Residual vs Predicted Value"
   )
+```
 
+As the residual plot shows, on the right, the residuals are distributed evenly, while on the very left part (predicted value < 2000g), there exist many extremely high residuals. The plot indicates that we should carefully consider those predicted values that are relatively small.
+
+```{r}
 cv_df <- 
   crossv_mc(data, 100) %>%
   mutate(
